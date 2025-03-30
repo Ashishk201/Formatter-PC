@@ -119,7 +119,7 @@ def process_excel(file_paths, combined_headers, desired_filename):
             if cell.value is not None:
                 h = cell.value
                 # Skip Serial No columns
-                if str(h).strip().lower() in ["s. no.", "serial no"]:
+                if isinstance(h, str) and h.strip().lower() in ["s. no.", "serial no"]:
                     continue
                 file_headers.append(h)
         # Create mapping for this file: header -> column index (1-indexed)
@@ -147,10 +147,8 @@ def process_excel(file_paths, combined_headers, desired_filename):
 
     # If "Name" is among headers, sort combined data alphabetically by it (case-insensitive)
     if any(isinstance(h, str) and h.strip().lower() == "name" for h in combined_headers):
-        # Find the header name exactly as present
-        name_header = next(h for h in combined_headers if h.strip().lower() == "name")
+        name_header = next(h for h in combined_headers if isinstance(h, str) and h.strip().lower() == "name")
         combined_data.sort(key=lambda r: str(r.get(name_header) or "").lower())
-
 
     # Create new workbook for output
     new_wb = openpyxl.Workbook()
@@ -209,7 +207,7 @@ def process_excel(file_paths, combined_headers, desired_filename):
         new_sheet.column_dimensions[get_column_letter(new_col)].width = 20
     new_sheet.row_dimensions[1].height = 20
 
-    # Format data cells
+    # Format data cells (rows 2 to data_max_row)
     for row in range(2, data_max_row + 1):
         for col in range(1, data_max_col + 1):
             cell = new_sheet.cell(row=row, column=col)
@@ -229,14 +227,11 @@ def process_excel(file_paths, combined_headers, desired_filename):
         cell.fill = header_fill
         cell.alignment = header_alignment
         cell.border = header_border
-    # Set the merged cell text for title row using desired_filename.
-    # We'll merge from column 2 (after left margin) to the right margin.
-    # (Margins will be added next.)
-    
+
     # --- Insert Left, Right, and Bottom Margins ---
     new_sheet.insert_cols(1)  # Left margin column.
     new_sheet.column_dimensions["A"].width = 2
-    right_margin_index = data_max_col + 2  # after shifting right by left margin.
+    right_margin_index = data_max_col + 2  # account for left margin shift.
     new_sheet.insert_cols(right_margin_index)
     new_sheet.column_dimensions[get_column_letter(right_margin_index)].width = 2
     blank_row = [None] * new_sheet.max_column
@@ -248,10 +243,9 @@ def process_excel(file_paths, combined_headers, desired_filename):
 
     # --- Merge Title Row (Row 2) Across from Column 2 to used_last_col ---
     new_sheet.merge_cells(start_row=2, start_column=2, end_row=2, end_column=used_last_col)
-    # Set the merged cell value to the desired file name.
     new_sheet.cell(row=2, column=2, value=desired_filename)
 
-    # --- Delete Excess Rows and Columns (if any) ---
+    # --- Delete Excess Rows and Columns ---
     total_rows = new_sheet.max_row
     if total_rows > used_last_row:
         new_sheet.delete_rows(used_last_row + 1, total_rows - used_last_row)
@@ -270,7 +264,7 @@ def process_excel(file_paths, combined_headers, desired_filename):
                     cell_length = len(str(cell.value))
                     if cell_length > max_length:
                         max_length = cell_length
-        # If this is the last data column (col == used_last_col - 1), add extra padding.
+        # If this is the last data column, add extra padding.
         if col == used_last_col - 1:
             new_sheet.column_dimensions[col_letter].width = max_length + 4
         else:
@@ -297,7 +291,7 @@ def upload():
         return redirect(url_for("index"))
     combined_headers = []
     saved_paths = []
-    # Process each uploaded file
+    # Process each uploaded file and build combined headers (excluding "S. No." / "Serial No")
     for file in files:
         if file.filename == "":
             continue
@@ -309,7 +303,6 @@ def upload():
             sheet = wb.active
             headers = [cell.value for cell in sheet[1] if cell.value is not None]
             wb.close()
-            # Exclude any header that is "S. No." or "Serial No" (case-insensitive)
             for h in headers:
                 if isinstance(h, str) and h.strip().lower() in ["s. no.", "serial no"]:
                     continue
@@ -322,7 +315,7 @@ def upload():
         flash("No valid headers found in uploaded file(s).")
         return redirect(url_for("index"))
     # Pass the combined headers and the list of file paths (JSON encoded) to the selection form.
-    return render_template_string(select_template, headers=combined_headers, files_json=json.dumps(saved_paths), filename="") 
+    return render_template_string(select_template, headers=combined_headers, files_json=json.dumps(saved_paths), filename="")
 
 @app.route("/process", methods=["POST"])
 def process():
