@@ -146,10 +146,11 @@ def process_excel(file_paths, combined_headers, desired_filename):
                     row[header] = row[header].upper()
 
     # If "Name" is among headers, sort combined data alphabetically by it (case-insensitive)
-    if any(h.strip().lower() == "name" for h in combined_headers):
+    if any(isinstance(h, str) and h.strip().lower() == "name" for h in combined_headers):
         # Find the header name exactly as present
         name_header = next(h for h in combined_headers if h.strip().lower() == "name")
-        combined_data.sort(key=lambda r: (r.get(name_header) or "").lower())
+        combined_data.sort(key=lambda r: str(r.get(name_header) or "").lower())
+
 
     # Create new workbook for output
     new_wb = openpyxl.Workbook()
@@ -310,7 +311,7 @@ def upload():
             wb.close()
             # Exclude any header that is "S. No." or "Serial No" (case-insensitive)
             for h in headers:
-                if h and str(h).strip().lower() in ["s. no.", "serial no"]:
+                if isinstance(h, str) and h.strip().lower() in ["s. no.", "serial no"]:
                     continue
                 if h not in combined_headers:
                     combined_headers.append(h)
